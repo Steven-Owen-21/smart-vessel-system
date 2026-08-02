@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Vessel Monitoring System</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border: #30363d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --accent-blue: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-yellow: #d29922;
+      --accent-red: #f85149;
+      --accent-purple: #bc8cff;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .header .subtitle {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .header .badge {
+      margin-left: auto;
+      background: var(--accent-green);
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .dashboard {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      grid-template-rows: 1.2fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .panel {
+      background: var(--bg-secondary);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .panel-title .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-green);
+    }
+    #map-panel { grid-row: 1; grid-column: 1; }
+    #engine-power-panel { grid-row: 1; grid-column: 2; }
+    #nav-panel { grid-row: 2; grid-column: 1; }
+    #alarms-panel { grid-row: 2; grid-column: 2; }
+    #map { flex: 1; border-radius: 6px; z-index: 1; }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex: 1;
+    }
+    .metric {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    .metric-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      letter-spacing: 0.3px;
+    }
+    .metric-value {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 2px;
+      transition: color 0.3s;
+    }
+    .metric-unit {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+    .metric-bar {
+      margin-top: 6px;
+      height: 4px;
+      background: var(--bg-primary);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .metric-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.8s ease, background 0.5s;
+    }
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      flex: 1;
+    }
+    .nav-metric {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+    }
+    .nav-metric .value {
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .nav-metric .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .tanks-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .tank {
+      flex: 1;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 8px;
+      text-align: center;
+    }
+    .tank-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .tank-value {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+    .tank-bar {
+      margin-top: 4px;
+      height: 3px;
+      background: var(--bg-primary);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .tank-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 1s ease;
+      background: var(--accent-blue);
+    }
+    .alarms-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .alarm-item {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--border);
+      animation: slideIn 0.3s ease;
+    }
+    .alarm-item.WARNING { border-left-color: var(--accent-yellow); }
+    .alarm-item.CRITICAL { border-left-color: var(--accent-red); }
+    .alarm-item.resolved { opacity: 0.4; }
+    .alarm-item .alarm-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .alarm-item .alarm-level {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+    .alarm-item.WARNING .alarm-level { background: var(--accent-yellow); color: #000; }
+    .alarm-item.CRITICAL .alarm-level { background: var(--accent-red); color: #fff; }
+    .alarm-item .alarm-title {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .alarm-item .alarm-time {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-left: auto;
+    }
+    .alarm-item .alarm-message {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(20px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes flash {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .alarm-flash { animation: flash 0.5s ease 3; }
+    .status-bar {
+      background: var(--bg-tertiary);
+      border-top: 1px solid var(--border);
+      padding: 6px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .status-bar .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+    .status-bar .status-dot.offline { background: var(--accent-red); animation: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .status-bar .tests-badge {
+      margin-left: auto;
+      background: var(--accent-green);
+      color: #000;
+      padding: 1px 8px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 10px;
+    }
+    .power-flow {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+    .power-flow .arrow { color: var(--accent-green); }
+    .depth-danger .value { color: var(--accent-red) !important; }
+    .depth-caution .value { color: var(--accent-yellow) !important; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2">
+      <path d="M2 20 L12 4 L22 20 Z"/>
+      <line x1="12" y1="10" x2="12" y2="14"/>
+      <circle cx="12" cy="17" r="1" fill="#58a6ff"/>
+    </svg>
+    <h1>Smart Vessel Monitoring System</h1>
+    <span class="subtitle">Greengrass Edge — Solent Demo</span>
+    <span class="badge">LIVE</span>
+  </div>
+
+  <div class="dashboard">
+    <!-- Map Panel -->
+    <div class="panel" id="map-panel">
+      <div class="panel-title"><span class="dot"></span>Chart &amp; Traffic</div>
+      <div id="map"></div>
+    </div>
+
+    <!-- Engine & Power Panel -->
+    <div class="panel" id="engine-power-panel">
+      <div class="panel-title"><span class="dot"></span>Engine &amp; Power</div>
+      <div class="metrics-grid">
+        <div class="metric">
+          <span class="metric-label">RPM</span>
+          <span class="metric-value" id="rpm">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="rpm-bar" style="width:0%;background:var(--accent-blue)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Coolant</span>
+          <span class="metric-value" id="coolant">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="coolant-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Oil Pressure</span>
+          <span class="metric-value" id="oil">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="oil-bar" style="width:0%;background:var(--accent-purple)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Health Score</span>
+          <span class="metric-value" id="health">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="health-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Battery SOC</span>
+          <span class="metric-value" id="soc">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="soc-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Solar</span>
+          <span class="metric-value" id="solar">—</span>
+          <div class="power-flow"><span class="arrow">☀</span> <span id="solar-flow">generating</span></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Cabin Temp</span>
+          <span class="metric-value" id="cabin-temp">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="cabin-temp-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Voltage</span>
+          <span class="metric-value" id="voltage">—</span>
+          <div class="power-flow"><span class="arrow">⚡</span> <span id="power-net">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Panel -->
+    <div class="panel" id="nav-panel">
+      <div class="panel-title"><span class="dot"></span>Navigation</div>
+      <div class="nav-grid">
+        <div class="nav-metric">
+          <div class="value" id="speed">—</div>
+          <div class="label">Speed (kts)</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="heading">—</div>
+          <div class="label">Heading °</div>
+        </div>
+        <div class="nav-metric" id="depth-panel">
+          <div class="value" id="depth">—</div>
+          <div class="label">Depth (m)</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="wind">—</div>
+          <div class="label">Wind (kts)</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="wind-angle">—</div>
+          <div class="label">Wind Angle °</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="lat">—</div>
+          <div class="label">Latitude</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="lon">—</div>
+          <div class="label">Longitude</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="elapsed">—</div>
+          <div class="label">Demo Time</div>
+        </div>
+      </div>
+      <div class="tanks-row">
+        <div class="tank">
+          <div class="tank-label">Fuel</div>
+          <div class="tank-value" id="fuel">—</div>
+          <div class="tank-bar"><div class="tank-bar-fill" id="fuel-bar" style="width:0%"></div></div>
+        </div>
+        <div class="tank">
+          <div class="tank-label">Water</div>
+          <div class="tank-value" id="water">—</div>
+          <div class="tank-bar"><div class="tank-bar-fill" id="water-bar" style="width:0%"></div></div>
+        </div>
+        <div class="tank">
+          <div class="tank-label">Waste</div>
+          <div class="tank-value" id="waste">—</div>
+          <div class="tank-bar"><div class="tank-bar-fill" id="waste-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alarms Panel -->
+    <div class="panel" id="alarms-panel">
+      <div class="panel-title"><span class="dot" id="alarm-dot"></span>Alarms &amp; Alerts</div>
+      <div class="alarms-list" id="alarms-list">
+        <div class="alarm-item" style="border-left-color: var(--text-secondary); opacity: 0.5;">
+          <div class="alarm-message">Waiting for events...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="status-dot" id="ws-dot"></span>
+    <span id="ws-status">Connecting...</span>
+    <span id="clock">—</span>
+    <span>|</span>
+    <span id="update-rate">—</span>
+    <span class="tests-badge">1,633 tests passing ✓</span>
+  </div>
+
+  <script>
+    // ─── Map Setup ────────────────────────────────────────────────────────
+    const map = L.map('map', {
+      center: [50.75, -1.3],
+      zoom: 13,
+      zoomControl: false,
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 18,
+    }).addTo(map);
+
+    // Own vessel marker (blue)
+    const vesselIcon = L.divIcon({
+      className: 'vessel-icon',
+      html: `<svg width="24" height="24" viewBox="0 0 24 24">
+        <polygon points="12,2 4,20 12,16 20,20" fill="#58a6ff" stroke="#fff" stroke-width="1"/>
+      </svg>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+    const vesselMarker = L.marker([50.75, -1.3], { icon: vesselIcon }).addTo(map);
+
+    // Route polyline
+    const routeLine = L.polyline([], { color: '#58a6ff', weight: 2, opacity: 0.6 }).addTo(map);
+
+    // AIS target markers
+    const aisMarkers = new Map();
+    function getAISIcon(risk) {
+      const colors = { SAFE: '#3fb950', WARNING: '#d29922', DANGER: '#f85149' };
+      const color = colors[risk] || colors.SAFE;
+      return L.divIcon({
+        className: 'ais-icon',
+        html: `<svg width="18" height="18" viewBox="0 0 24 24">
+          <polygon points="12,2 4,20 12,16 20,20" fill="${color}" stroke="#fff" stroke-width="1" opacity="0.85"/>
+        </svg>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+    }
+
+    function updateAISMarkers(targets) {
+      for (const target of targets) {
+        if (aisMarkers.has(target.mmsi)) {
+          const m = aisMarkers.get(target.mmsi);
+          m.setLatLng([target.lat, target.lon]);
+          m.setIcon(getAISIcon(target.risk));
+          m.setTooltipContent(
+            `<b>${target.name}</b><br>SOG: ${target.sog.toFixed(1)} kts<br>CPA: ${target.cpa} nm<br>Risk: ${target.risk}`
+          );
+        } else {
+          const m = L.marker([target.lat, target.lon], { icon: getAISIcon(target.risk) })
+            .addTo(map)
+            .bindTooltip(
+              `<b>${target.name}</b><br>SOG: ${target.sog.toFixed(1)} kts<br>CPA: ${target.cpa} nm<br>Risk: ${target.risk}`,
+              { direction: 'top', offset: [0, -10] }
+            );
+          aisMarkers.set(target.mmsi, m);
+        }
+      }
+    }
+
+    // ─── WebSocket ────────────────────────────────────────────────────────
+    let ws;
+    let lastUpdate = Date.now();
+    let reconnectTimer = null;
+    let renderedAlarmIds = new Set();
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${location.host}`);
+
+      ws.onopen = () => {
+        document.getElementById('ws-dot').classList.remove('offline');
+        document.getElementById('ws-status').textContent = 'Connected';
+      };
+
+      ws.onclose = () => {
+        document.getElementById('ws-dot').classList.add('offline');
+        document.getElementById('ws-status').textContent = 'Reconnecting...';
+        reconnectTimer = setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => ws.close();
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'state') {
+          updateDashboard(msg.data);
+          const now = Date.now();
+          document.getElementById('update-rate').textContent =
+            `${(now - lastUpdate)}ms interval`;
+          lastUpdate = now;
+        }
+      };
+    }
+
+    connect();
+
+    // ─── Dashboard Update ─────────────────────────────────────────────────
+    function updateDashboard(state) {
+      // Clock
+      document.getElementById('clock').textContent =
+        new Date(state.timestamp).toLocaleTimeString();
+
+      // Elapsed
+      const mins = Math.floor(state.elapsed / 60);
+      const secs = Math.floor(state.elapsed % 60);
+      document.getElementById('elapsed').textContent =
+        `${mins}:${secs.toString().padStart(2, '0')}`;
+
+      // Map
+      vesselMarker.setLatLng([state.ownVessel.lat, state.ownVessel.lon]);
+      routeLine.setLatLngs(state.routeHistory.map(p => [p.lat, p.lon]));
+      map.panTo([state.ownVessel.lat, state.ownVessel.lon], { animate: true, duration: 1 });
+      updateAISMarkers(state.aisTargets);
+      // Engine
+      document.getElementById('rpm').textContent = state.engine.rpm;
+      document.getElementById('rpm-bar').style.width =
+        `${((state.engine.rpm - 1500) / 1500) * 100}%`;
+
+      document.getElementById('coolant').innerHTML =
+        `${state.engine.coolantTemp}<span class="metric-unit">°C</span>`;
+      const coolantPct = ((state.engine.coolantTemp - 70) / 30) * 100;
+      document.getElementById('coolant-bar').style.width = `${coolantPct}%`;
+      document.getElementById('coolant-bar').style.background =
+        state.engine.coolantTemp > 90 ? 'var(--accent-red)' : 'var(--accent-green)';
+
+      document.getElementById('oil').innerHTML =
+        `${state.engine.oilPressure}<span class="metric-unit"> bar</span>`;
+      document.getElementById('oil-bar').style.width =
+        `${((state.engine.oilPressure - 2) / 2) * 100}%`;
+
+      document.getElementById('health').innerHTML =
+        `${state.engine.healthScore}<span class="metric-unit">%</span>`;
+      document.getElementById('health-bar').style.width = `${state.engine.healthScore}%`;
+
+      // Power
+      document.getElementById('soc').innerHTML =
+        `${state.power.socPercent.toFixed(0)}<span class="metric-unit">%</span>`;
+      document.getElementById('soc-bar').style.width = `${state.power.socPercent}%`;
+      const socColor = state.power.socPercent > 60 ? 'var(--accent-green)' :
+        state.power.socPercent > 30 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+      document.getElementById('soc-bar').style.background = socColor;
+
+      document.getElementById('solar').innerHTML =
+        `${state.power.solarWatts}<span class="metric-unit">W</span>`;
+      document.getElementById('solar-flow').textContent =
+        `+${state.power.windWatts}W wind`;
+      // Cabin temperature
+      document.getElementById('cabin-temp').innerHTML =
+        `${state.cabinTemp}<span class="metric-unit">°C</span>`;
+      const tempPct = ((state.cabinTemp - 20) / 15) * 100;
+      document.getElementById('cabin-temp-bar').style.width = `${tempPct}%`;
+      const tempColor = state.cabinTemp >= 28 ? 'var(--accent-red)' :
+        state.cabinTemp >= 26 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+      document.getElementById('cabin-temp-bar').style.background = tempColor;
+      document.getElementById('cabin-temp').style.color =
+        state.cabinTemp >= 28 ? 'var(--accent-red)' : 'var(--text-primary)';
+
+      // Voltage & net power
+      document.getElementById('voltage').innerHTML =
+        `${state.power.voltage}<span class="metric-unit">V</span>`;
+      const net = state.power.solarWatts + state.power.windWatts - state.power.consumptionWatts;
+      document.getElementById('power-net').textContent =
+        `Net: ${net > 0 ? '+' : ''}${net}W`;
+
+      // Navigation
+      document.getElementById('speed').textContent = state.ownVessel.sog.toFixed(1);
+      document.getElementById('heading').textContent = state.ownVessel.cog.toFixed(0) + '°';
+
+      const depthPanel = document.getElementById('depth-panel');
+      document.getElementById('depth').textContent = state.navigation.depth.toFixed(1);
+      depthPanel.className = 'nav-metric';
+      if (state.navigation.depth < 3) depthPanel.classList.add('depth-danger');
+      else if (state.navigation.depth < 6) depthPanel.classList.add('depth-caution');
+
+      document.getElementById('wind').textContent = state.navigation.windSpeed;
+      document.getElementById('wind-angle').textContent = state.navigation.windAngle + '°';
+      document.getElementById('lat').textContent = state.ownVessel.lat.toFixed(4);
+      document.getElementById('lon').textContent = state.ownVessel.lon.toFixed(4);
+      // Tanks
+      document.getElementById('fuel').textContent = state.tanks.fuel.toFixed(0) + '%';
+      document.getElementById('fuel-bar').style.width = state.tanks.fuel + '%';
+      document.getElementById('water').textContent = state.tanks.water.toFixed(0) + '%';
+      document.getElementById('water-bar').style.width = state.tanks.water + '%';
+      document.getElementById('waste').textContent = state.tanks.waste.toFixed(0) + '%';
+      document.getElementById('waste-bar').style.width = state.tanks.waste + '%';
+
+      // Alarms
+      updateAlarms(state.alarms);
+    }
+
+    function updateAlarms(alarms) {
+      const list = document.getElementById('alarms-list');
+      const alarmDot = document.getElementById('alarm-dot');
+
+      if (alarms.length === 0) return;
+
+      // Check for active (unresolved) alarms
+      const active = alarms.filter(a => !a.resolved);
+      alarmDot.style.background = active.length > 0 ?
+        (active.some(a => a.level === 'CRITICAL') ? 'var(--accent-red)' : 'var(--accent-yellow)') :
+        'var(--accent-green)';
+
+      // Render new alarms
+      let hasNew = false;
+      for (const alarm of alarms) {
+        const alarmKey = alarm.id + (alarm.resolved ? '-resolved' : '');
+        if (renderedAlarmIds.has(alarmKey)) continue;
+        renderedAlarmIds.add(alarmKey);
+        hasNew = true;
+
+        if (alarm.resolved && renderedAlarmIds.has(alarm.id)) {
+          // Mark existing alarm as resolved
+          const existing = document.querySelector(`[data-alarm-id="${alarm.id}"]`);
+          if (existing) existing.classList.add('resolved');
+          continue;
+        }
+        const el = document.createElement('div');
+        el.className = `alarm-item ${alarm.level} alarm-flash`;
+        el.setAttribute('data-alarm-id', alarm.id);
+        el.innerHTML = `
+          <div class="alarm-header">
+            <span class="alarm-level">${alarm.level}</span>
+            <span class="alarm-title">${alarm.title}</span>
+            <span class="alarm-time">${new Date(alarm.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div class="alarm-message">${alarm.message}</div>
+        `;
+
+        // Remove the "waiting" placeholder
+        const placeholder = list.querySelector('.alarm-item[style]');
+        if (placeholder) placeholder.remove();
+
+        list.insertBefore(el, list.firstChild);
+      }
+
+      // Scroll to top on new alarms
+      if (hasNew) list.scrollTop = 0;
+    }
+  </script>
+</body>
+</html>
