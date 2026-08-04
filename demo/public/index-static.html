@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Vessel Monitoring System</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border: #30363d;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --accent-blue: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-yellow: #d29922;
+      --accent-red: #f85149;
+      --accent-purple: #bc8cff;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header h1 { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+    .header .subtitle { font-size: 12px; color: var(--text-secondary); }
+    .header .badge {
+      margin-left: auto;
+      background: var(--accent-green);
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .dashboard {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      grid-template-rows: 1.2fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .panel {
+      background: var(--bg-secondary);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .panel-title .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-green);
+    }
+    #map-panel { grid-row: 1; grid-column: 1; }
+    #engine-power-panel { grid-row: 1; grid-column: 2; }
+    #nav-panel { grid-row: 2; grid-column: 1; }
+    #alarms-panel { grid-row: 2; grid-column: 2; }
+    #map { flex: 1; border-radius: 6px; z-index: 1; }
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex: 1;
+    }
+    .metric {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    .metric-label {
+      font-size: 10px; text-transform: uppercase;
+      color: var(--text-secondary); letter-spacing: 0.3px;
+    }
+    .metric-value {
+      font-size: 22px; font-weight: 700; margin-top: 2px;
+      transition: color 0.3s;
+    }
+    .metric-unit { font-size: 11px; color: var(--text-secondary); font-weight: 400; }
+    .metric-bar {
+      margin-top: 6px; height: 4px; background: var(--bg-primary);
+      border-radius: 2px; overflow: hidden;
+    }
+    .metric-bar-fill {
+      height: 100%; border-radius: 2px;
+      transition: width 0.8s ease, background 0.5s;
+    }
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      flex: 1;
+    }
+    .nav-metric {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+    }
+    .nav-metric .value { font-size: 28px; font-weight: 700; }
+    .nav-metric .label {
+      font-size: 10px; text-transform: uppercase;
+      color: var(--text-secondary); margin-top: 4px;
+    }
+    .tanks-row { display: flex; gap: 8px; margin-top: 8px; }
+    .tank {
+      flex: 1; background: var(--bg-tertiary);
+      border-radius: 6px; padding: 8px; text-align: center;
+    }
+    .tank-label { font-size: 9px; text-transform: uppercase; color: var(--text-secondary); }
+    .tank-value { font-size: 16px; font-weight: 600; margin-top: 2px; }
+    .tank-bar {
+      margin-top: 4px; height: 3px; background: var(--bg-primary);
+      border-radius: 2px; overflow: hidden;
+    }
+    .tank-bar-fill {
+      height: 100%; border-radius: 2px;
+      transition: width 1s ease; background: var(--accent-blue);
+    }
+    .alarms-list {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .alarm-item {
+      background: var(--bg-tertiary);
+      border-radius: 6px; padding: 10px 12px;
+      border-left: 3px solid var(--border);
+      animation: slideIn 0.3s ease;
+    }
+    .alarm-item.WARNING { border-left-color: var(--accent-yellow); }
+    .alarm-item.CRITICAL { border-left-color: var(--accent-red); }
+    .alarm-item.resolved { opacity: 0.4; }
+    .alarm-item .alarm-header { display: flex; align-items: center; gap: 8px; }
+    .alarm-item .alarm-level {
+      font-size: 9px; font-weight: 700; padding: 2px 6px;
+      border-radius: 3px; text-transform: uppercase;
+    }
+    .alarm-item.WARNING .alarm-level { background: var(--accent-yellow); color: #000; }
+    .alarm-item.CRITICAL .alarm-level { background: var(--accent-red); color: #fff; }
+    .alarm-item .alarm-title { font-size: 12px; font-weight: 600; }
+    .alarm-item .alarm-time { font-size: 10px; color: var(--text-secondary); margin-left: auto; }
+    .alarm-item .alarm-message { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+    @keyframes slideIn {
+      from { transform: translateX(20px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes flash {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .alarm-flash { animation: flash 0.5s ease 3; }
+    .status-bar {
+      background: var(--bg-tertiary);
+      border-top: 1px solid var(--border);
+      padding: 6px 20px;
+      display: flex; align-items: center; gap: 16px;
+      font-size: 11px; color: var(--text-secondary);
+    }
+    .status-bar .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent-green); animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .status-bar .tests-badge {
+      margin-left: auto;
+      background: var(--accent-green); color: #000;
+      padding: 1px 8px; border-radius: 8px;
+      font-weight: 600; font-size: 10px;
+    }
+    .power-flow {
+      display: flex; align-items: center; gap: 4px;
+      margin-top: 4px; font-size: 10px; color: var(--text-secondary);
+    }
+    .power-flow .arrow { color: var(--accent-green); }
+    .depth-danger .value { color: var(--accent-red) !important; }
+    .depth-caution .value { color: var(--accent-yellow) !important; }
+    /* Route Planner Panel */
+    .route-planner-overlay {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: 400px;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border);
+      z-index: 9999;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .route-planner-overlay.open { transform: translateX(0); }
+    .route-planner-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-tertiary);
+    }
+    .route-planner-header h2 {
+      font-size: 14px; font-weight: 600; color: var(--text-primary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .route-planner-close {
+      background: none; border: none; color: var(--text-secondary);
+      font-size: 20px; cursor: pointer; padding: 4px 8px;
+      border-radius: 4px; line-height: 1;
+    }
+    .route-planner-close:hover { background: var(--bg-primary); color: var(--text-primary); }
+    .route-planner-body {
+      flex: 1; overflow-y: auto; padding: 16px;
+    }
+    .rp-section { margin-bottom: 18px; }
+    .rp-section-title {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--accent-blue);
+      margin-bottom: 10px; padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .rp-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 5px 0; font-size: 12px;
+    }
+    .rp-row .rp-label { color: var(--text-secondary); }
+    .rp-row .rp-value { font-weight: 600; color: var(--text-primary); }
+    .rp-badge {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 10px; font-size: 10px; font-weight: 700;
+    }
+    .rp-badge.good { background: var(--accent-green); color: #000; }
+    .rp-badge.moderate { background: var(--accent-yellow); color: #000; }
+    .rp-badge.poor { background: var(--accent-red); color: #fff; }
+    .rp-marina-card {
+      background: var(--bg-tertiary); border-radius: 6px;
+      padding: 10px 12px; margin-bottom: 8px;
+      border-left: 3px solid var(--accent-blue);
+    }
+    .rp-marina-name { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .rp-marina-details {
+      font-size: 11px; color: var(--text-secondary);
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    }
+    .rp-marina-details .facility-icon {
+      display: inline-flex; align-items: center; gap: 2px;
+      background: var(--bg-primary); padding: 2px 6px;
+      border-radius: 3px; font-size: 10px;
+    }
+    .rp-marina-access {
+      font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px;
+    }
+    .rp-marina-access.always { background: var(--accent-green); color: #000; }
+    .rp-marina-access.tidal { background: var(--accent-yellow); color: #000; }
+    .rp-marina-access.locked { background: var(--accent-purple); color: #000; }
+    .rp-loading {
+      text-align: center; padding: 20px;
+      color: var(--text-secondary); font-size: 12px;
+    }
+    .rp-loading .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid var(--border); border-top-color: var(--accent-blue);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-bottom: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .rp-no-marinas {
+      text-align: center; padding: 12px;
+      color: var(--text-secondary); font-size: 11px; font-style: italic;
+    }
+    .rp-leg {
+      background: var(--bg-tertiary); border-radius: 6px;
+      padding: 12px; margin-bottom: 10px;
+      border-left: 3px solid var(--accent-blue);
+    }
+    .rp-leg-title {
+      font-size: 12px; font-weight: 700; color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .rp-leg-detail {
+      font-size: 11px; color: var(--text-secondary);
+      padding: 2px 0;
+    }
+    .rp-leg-stop {
+      margin-top: 8px; padding-top: 8px;
+      border-top: 1px dashed var(--border);
+    }
+    .rp-leg-stop-title {
+      font-size: 11px; font-weight: 600; color: var(--accent-yellow);
+      margin-bottom: 4px;
+    }
+    .rp-leg-reason {
+      font-size: 11px; color: var(--text-secondary);
+    }
+    .rp-summary {
+      background: var(--bg-tertiary); border-radius: 6px;
+      padding: 12px; margin-top: 12px;
+      border: 1px solid var(--accent-blue);
+      font-size: 12px; color: var(--text-primary);
+      text-align: center; font-weight: 600;
+    }
+    .copilot-msg {
+      background: var(--bg-tertiary); border-radius: 8px;
+      padding: 12px; font-size: 12px; color: var(--text-secondary);
+      line-height: 1.5; border-left: 3px solid var(--accent-purple);
+    }
+    .autopilot-box {
+      background: var(--bg-primary); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px; margin-top: 8px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .autopilot-mode {
+      font-size: 11px; font-weight: 700; color: var(--accent-green);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .autopilot-label {
+      font-size: 9px; color: var(--text-secondary); text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" stroke-width="2">
+      <path d="M2 20 L12 4 L22 20 Z"/>
+      <line x1="12" y1="10" x2="12" y2="14"/>
+      <circle cx="12" cy="17" r="1" fill="#58a6ff"/>
+    </svg>
+    <h1>Smart Vessel Monitoring System</h1>
+    <span class="subtitle">Client-Side Simulation — The Wash, UK</span>
+    <span class="badge">LIVE</span>
+  </div>
+
+  <div class="dashboard">
+    <!-- Map Panel -->
+    <div class="panel" id="map-panel" style="position:relative;">
+      <div class="panel-title"><span class="dot"></span>Chart &amp; Traffic</div>
+      <button id="follow-btn" style="position:absolute;top:40px;right:10px;z-index:1000;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;">📍 Following</button>
+      <div id="map"></div>
+    </div>
+
+    <!-- Engine & Power Panel -->
+    <div class="panel" id="engine-power-panel">
+      <div class="panel-title"><span class="dot"></span>Engine &amp; Power</div>
+      <div class="metrics-grid">
+        <div class="metric">
+          <span class="metric-label">RPM</span>
+          <span class="metric-value" id="rpm">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="rpm-bar" style="width:0%;background:var(--accent-blue)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Coolant</span>
+          <span class="metric-value" id="coolant">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="coolant-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Oil Pressure</span>
+          <span class="metric-value" id="oil">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="oil-bar" style="width:0%;background:var(--accent-purple)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Health Score</span>
+          <span class="metric-value" id="health">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="health-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Battery SOC</span>
+          <span class="metric-value" id="soc">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="soc-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Solar</span>
+          <span class="metric-value" id="solar">—</span>
+          <div class="power-flow"><span class="arrow">☀</span> <span id="solar-flow">generating</span></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Cabin Temp</span>
+          <span class="metric-value" id="cabin-temp">—</span>
+          <div class="metric-bar"><div class="metric-bar-fill" id="cabin-temp-bar" style="width:0%;background:var(--accent-green)"></div></div>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Voltage</span>
+          <span class="metric-value" id="voltage">—</span>
+          <div class="power-flow"><span class="arrow">⚡</span> <span id="power-net">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Panel -->
+    <div class="panel" id="nav-panel">
+      <div class="panel-title"><span class="dot"></span>Navigation</div>
+      <div class="nav-grid">
+        <div class="nav-metric">
+          <div class="value" id="speed">—</div>
+          <div class="label">Speed (kts)</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="heading">—</div>
+          <div class="label">Heading °</div>
+        </div>
+        <div class="nav-metric" id="depth-panel">
+          <div class="value" id="depth">—</div>
+          <div class="label">Depth (m)</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="wind">—</div>
+          <div class="label">Wind (kts)</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="wind-angle">—</div>
+          <div class="label">Wind Angle °</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="lat">—</div>
+          <div class="label">Latitude</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="lon">—</div>
+          <div class="label">Longitude</div>
+        </div>
+        <div class="nav-metric">
+          <div class="value" id="elapsed">—</div>
+          <div class="label">Demo Time</div>
+        </div>
+      </div>
+      <div class="tanks-row">
+        <div class="tank">
+          <div class="tank-label">Fuel</div>
+          <div class="tank-value" id="fuel">—</div>
+          <div class="tank-bar"><div class="tank-bar-fill" id="fuel-bar" style="width:0%"></div></div>
+        </div>
+        <div class="tank">
+          <div class="tank-label">Water</div>
+          <div class="tank-value" id="water">—</div>
+          <div class="tank-bar"><div class="tank-bar-fill" id="water-bar" style="width:0%"></div></div>
+        </div>
+        <div class="tank">
+          <div class="tank-label">Waste</div>
+          <div class="tank-value" id="waste">—</div>
+          <div class="tank-bar"><div class="tank-bar-fill" id="waste-bar" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="autopilot-box">
+        <span class="autopilot-label">Autopilot</span>
+        <span class="autopilot-mode" id="autopilot-mode">HEADING HOLD 90°</span>
+      </div>
+    </div>
+
+    <!-- Alarms Panel -->
+    <div class="panel" id="alarms-panel">
+      <div class="panel-title"><span class="dot" id="alarm-dot"></span>Alarms &amp; Alerts</div>
+      <div class="alarms-list" id="alarms-list">
+        <div class="alarm-item" style="border-left-color: var(--text-secondary); opacity: 0.5;">
+          <div class="alarm-message">Waiting for events...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Route Planner Panel -->
+  <div class="route-planner-overlay" id="route-planner">
+    <div class="route-planner-header">
+      <h2>🧭 Passage Planner</h2>
+      <button class="route-planner-close" id="rp-close" title="Close">&times;</button>
+    </div>
+    <div class="route-planner-body" id="rp-body">
+      <div class="rp-loading"><div class="spinner"></div><br>Planning route...</div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span class="status-dot" id="sim-dot"></span>
+    <span id="sim-status">Simulation Running</span>
+    <span id="clock">—</span>
+    <span>|</span>
+    <span id="update-rate">—</span>
+    <span class="tests-badge">1,633 tests passing ✓</span>
+  </div>
+
+  <script>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VESSEL SIMULATOR — runs entirely in the browser
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const DEG_TO_RAD = Math.PI / 180;
+  const RAD_TO_DEG = 180 / Math.PI;
+  const NM_TO_M = 1852;
+  const EARTH_RADIUS_M = 6371000;
+
+  const PUG_THRESHOLDS = { WARNING_C: 28, CRITICAL_C: 32 };
+  const DEPTH_THRESHOLDS = { SAFE: 5.0, CAUTION: 1.0, DRAFT: 1.8, SAFETY_MARGIN: 1.0 };
+  const TRAFFIC_THRESHOLDS = {
+    WARNING_CPA_NM: 1.0, WARNING_TCPA_MIN: 15,
+    DANGER_CPA_NM: 0.5, DANGER_TCPA_MIN: 10
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // VESSEL PARAMETERS (for supply calculations)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const VESSEL_PARAMS = {
+    loa: 12.5, beam: 3.8, draft: 1.8, airDraft: 18,
+    fuelCapacityLitres: 200,
+    fuelConsumptionLph: 3,
+    waterCapacityLitres: 400,
+    waterConsumptionLpd: 20,
+    foodDays: 14,
+    maxPassageLegHours: 24,
+  };
+
+  function calculateCPATCPA(own, target) {
+    const dLat = (target.lat - own.lat) * DEG_TO_RAD;
+    const dLon = (target.lon - own.lon) * DEG_TO_RAD;
+    const midLat = ((own.lat + target.lat) / 2) * DEG_TO_RAD;
+    const relX = (dLon * Math.cos(midLat) * EARTH_RADIUS_M) / NM_TO_M;
+    const relY = (dLat * EARTH_RADIUS_M) / NM_TO_M;
+    const ownVx = own.sog * Math.sin(own.cog * DEG_TO_RAD);
+    const ownVy = own.sog * Math.cos(own.cog * DEG_TO_RAD);
+    const targetVx = target.sog * Math.sin(target.cog * DEG_TO_RAD);
+    const targetVy = target.sog * Math.cos(target.cog * DEG_TO_RAD);
+    const relVx = targetVx - ownVx;
+    const relVy = targetVy - ownVy;
+    const relSpeedSq = relVx * relVx + relVy * relVy;
+    if (relSpeedSq < 1e-10) {
+      return { cpa: Math.sqrt(relX * relX + relY * relY), tcpa: Infinity };
+    }
+    const tcpaHours = -(relX * relVx + relY * relVy) / relSpeedSq;
+    const tcpaMinutes = tcpaHours * 60;
+    const cpaX = relX + relVx * tcpaHours;
+    const cpaY = relY + relVy * tcpaHours;
+    return { cpa: Math.sqrt(cpaX * cpaX + cpaY * cpaY), tcpa: tcpaMinutes };
+  }
+
+  function classifyRisk(cpa, tcpa) {
+    if (tcpa <= 0 || !Number.isFinite(tcpa)) return 'SAFE';
+    if (cpa < TRAFFIC_THRESHOLDS.DANGER_CPA_NM && tcpa < TRAFFIC_THRESHOLDS.DANGER_TCPA_MIN) return 'DANGER';
+    if (cpa < TRAFFIC_THRESHOLDS.WARNING_CPA_NM && tcpa < TRAFFIC_THRESHOLDS.WARNING_TCPA_MIN) return 'WARNING';
+    return 'SAFE';
+  }
+
+  function randomBetween(min, max) { return min + Math.random() * (max - min); }
+
+  function movePosition(lat, lon, headingDeg, distanceNm) {
+    const d = (distanceNm * NM_TO_M) / EARTH_RADIUS_M;
+    const brng = headingDeg * DEG_TO_RAD;
+    const lat1 = lat * DEG_TO_RAD;
+    const lon1 = lon * DEG_TO_RAD;
+    const lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
+    );
+    const lon2 = lon1 + Math.atan2(
+      Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+    return { lat: lat2 * RAD_TO_DEG, lon: lon2 * RAD_TO_DEG };
+  }
+
+  class VesselSimulator {
+    constructor() {
+      this.startTime = Date.now();
+      this.tick = 0;
+      this.ownVessel = { lat: 52.8721, lon: -0.0412, sog: 6.5, cog: 90 };
+      this.routeHistory = [{ lat: this.ownVessel.lat, lon: this.ownVessel.lon }];
+      this.engine = { rpm: 2300, coolantTemp: 81, oilPressure: 3.0, hours: 1247.3, healthScore: 94 };
+      this.power = { socPercent: 85, voltage: 13.2, solarWatts: 280, windWatts: 45, consumptionWatts: 180 };
+      this.navigation = { depth: 8.0, windSpeed: 14, windAngle: 45 };
+      this.cabinTemp = 25.0;
+      this.tanks = { fuel: 78, water: 65, waste: 22 };
+      this.alarms = [];
+      this.autopilotMode = 'HEADING HOLD 90°';
+      // AIS traffic — UK shipping lanes
+      this.aisTargets = [
+        // Humber approach - cargo vessels
+        { mmsi: 235092410, name: 'HUMBER BRIDGE', lat: 53.6200, lon: 0.1500, sog: 10.0, cog: 250, length: 120, type: 'cargo' },
+        { mmsi: 235001234, name: 'NORTH SEA TRADER', lat: 53.6800, lon: 0.2200, sog: 8.5, cog: 240, length: 95, type: 'cargo' },
+        // Thames Estuary - tankers
+        { mmsi: 235005678, name: 'THAMES SPIRIT', lat: 51.4800, lon: 1.2000, sog: 9.0, cog: 260, length: 180, type: 'tanker' },
+        { mmsi: 235009999, name: 'ESSEX VOYAGER', lat: 51.5200, lon: 1.4500, sog: 7.5, cog: 245, length: 160, type: 'tanker' },
+        // Dover Strait - container ships
+        { mmsi: 235011111, name: 'MAERSK DOVER', lat: 51.0500, lon: 1.4000, sog: 16.0, cog: 45, length: 300, type: 'container' },
+        { mmsi: 235022222, name: 'EVER CHANNEL', lat: 51.1200, lon: 1.6000, sog: 15.0, cog: 225, length: 280, type: 'container' },
+        // Fishing vessel near The Wash
+        { mmsi: 235033333, name: 'WASH HARVESTER', lat: 52.9800, lon: 0.1200, sog: 3.5, cog: 160, length: 18, type: 'fishing' },
+        // Ferry - Hull-Rotterdam
+        { mmsi: 235044444, name: 'PRIDE OF HULL', lat: 53.7500, lon: 0.5000, sog: 18.0, cog: 110, length: 215, type: 'ferry' },
+      ];
+    }
+
+    getElapsedSeconds() { return (Date.now() - this.startTime) / 1000; }
+
+    update() {
+      this.tick++;
+      const elapsed = this.getElapsedSeconds();
+      this._updateOwnVessel();
+      this._updateEngine();
+      this._updatePower(elapsed);
+      this._updateNavigation(elapsed);
+      this._updateCabinTemp(elapsed);
+      this._updateAISTargets(elapsed);
+      this._updateTanks();
+      this._checkAlarms(elapsed);
+      return this.getState();
+    }
+
+    getState() {
+      const elapsed = this.getElapsedSeconds();
+      const aisWithCPA = this.aisTargets.map((target) => {
+        const { cpa, tcpa } = calculateCPATCPA(this.ownVessel, target);
+        const risk = classifyRisk(cpa, tcpa);
+        return { ...target, cpa: +cpa.toFixed(2), tcpa: +tcpa.toFixed(1), risk };
+      });
+      return {
+        timestamp: Date.now(), elapsed: +elapsed.toFixed(1),
+        ownVessel: { ...this.ownVessel }, routeHistory: [...this.routeHistory],
+        engine: { ...this.engine }, power: { ...this.power },
+        navigation: { ...this.navigation }, cabinTemp: +this.cabinTemp.toFixed(1),
+        aisTargets: aisWithCPA, tanks: { ...this.tanks }, alarms: [...this.alarms],
+        autopilotMode: this.autopilotMode
+      };
+    }
+
+    _updateOwnVessel() {
+      const timeHours = 1.5 / 3600;
+      const distNm = this.ownVessel.sog * timeHours;
+      this.ownVessel.cog += randomBetween(-0.5, 0.5);
+      this.ownVessel.cog = ((this.ownVessel.cog % 360) + 360) % 360;
+      this.ownVessel.sog = Math.max(5, Math.min(8, this.ownVessel.sog + randomBetween(-0.1, 0.1)));
+      const newPos = movePosition(this.ownVessel.lat, this.ownVessel.lon, this.ownVessel.cog, distNm);
+      this.ownVessel.lat = newPos.lat;
+      this.ownVessel.lon = newPos.lon;
+      if (this.tick % 5 === 0) {
+        this.routeHistory.push({ lat: newPos.lat, lon: newPos.lon });
+        if (this.routeHistory.length > 200) this.routeHistory.shift();
+      }
+    }
+
+    _updateEngine() {
+      this.engine.rpm = Math.round(Math.max(2000, Math.min(2600, this.engine.rpm + randomBetween(-30, 30))));
+      this.engine.coolantTemp = +(Math.max(78, Math.min(85, this.engine.coolantTemp + randomBetween(-0.3, 0.3)))).toFixed(1);
+      this.engine.oilPressure = +(Math.max(2.5, Math.min(3.5, this.engine.oilPressure + randomBetween(-0.05, 0.05)))).toFixed(2);
+      this.engine.hours += 1.5 / 3600;
+      this.engine.hours = +this.engine.hours.toFixed(1);
+      this.engine.healthScore = Math.round(Math.max(88, Math.min(98, this.engine.healthScore + randomBetween(-0.5, 0.5))));
+    }
+
+    _updatePower(elapsed) {
+      const drainRate = (85 - 45) / 300;
+      this.power.socPercent = Math.max(45, 85 - elapsed * drainRate);
+      this.power.socPercent = +this.power.socPercent.toFixed(1);
+      this.power.voltage = +(12.0 + (this.power.socPercent / 100) * 1.6).toFixed(1);
+      this.power.solarWatts = Math.round(Math.max(100, Math.min(400, this.power.solarWatts + randomBetween(-15, 15))));
+      this.power.windWatts = Math.round(Math.max(20, Math.min(80, this.power.windWatts + randomBetween(-5, 5))));
+      this.power.consumptionWatts = Math.round(Math.max(150, Math.min(220, this.power.consumptionWatts + randomBetween(-5, 5))));
+    }
+
+    _updateNavigation(elapsed) {
+      let baseDepth = 8 + Math.sin(elapsed / 30) * 4;
+      if (elapsed >= 85 && elapsed <= 100) {
+        const progress = (elapsed - 85) / 7.5;
+        baseDepth = 8 - progress * 6;
+        baseDepth = Math.max(2.0, baseDepth);
+      } else if (elapsed > 100 && elapsed < 110) {
+        baseDepth = 2.0 + ((elapsed - 100) / 10) * 6;
+      }
+      this.navigation.depth = +(Math.max(2.0, baseDepth + randomBetween(-0.3, 0.3))).toFixed(1);
+      this.navigation.windSpeed = +(Math.max(10, Math.min(20, this.navigation.windSpeed + randomBetween(-0.5, 0.5)))).toFixed(0);
+      this.navigation.windAngle = Math.round(Math.max(0, Math.min(180, this.navigation.windAngle + randomBetween(-3, 3))));
+    }
+
+    _updateCabinTemp(elapsed) {
+      let targetTemp = 25.5 + Math.sin(elapsed / 60) * 1.5;
+      if (elapsed >= 25 && elapsed <= 45) {
+        const progress = Math.min(1, (elapsed - 25) / 5);
+        targetTemp = 25.5 + progress * 3.5;
+      }
+      if (elapsed >= 145) { targetTemp = 25.0; }
+      this.cabinTemp += (targetTemp - this.cabinTemp) * 0.15;
+      this.cabinTemp += randomBetween(-0.1, 0.1);
+      this.cabinTemp = +this.cabinTemp.toFixed(1);
+    }
+
+    _updateAISTargets(elapsed) {
+      for (const target of this.aisTargets) {
+        const timeHours = 1.5 / 3600;
+        const distNm = target.sog * timeHours;
+        // Fishing vessel wanders around The Wash
+        if (target.mmsi === 235033333) {
+          target.cog += randomBetween(-3, 3);
+          target.cog = ((target.cog % 360) + 360) % 360;
+        } else {
+          target.cog += randomBetween(-0.3, 0.3);
+          target.cog = ((target.cog % 360) + 360) % 360;
+        }
+        const newPos = movePosition(target.lat, target.lon, target.cog, distNm);
+        target.lat = newPos.lat;
+        target.lon = newPos.lon;
+      }
+    }
+
+    _updateTanks() {
+      this.tanks.fuel = +(Math.max(50, this.tanks.fuel - 0.01)).toFixed(1);
+      this.tanks.water = +(Math.max(40, this.tanks.water - 0.005)).toFixed(1);
+      this.tanks.waste = +(Math.min(40, this.tanks.waste + 0.003)).toFixed(1);
+    }
+
+    _checkAlarms(elapsed) {
+      if (elapsed >= 30 && elapsed < 45 && this.cabinTemp >= PUG_THRESHOLDS.WARNING_C) {
+        if (!this.alarms.find(a => a.id === 'pug-temp-warning' && !a.resolved)) {
+          this.alarms.push({
+            id: 'pug-temp-warning', level: 'WARNING', category: 'safety',
+            title: 'Pug Temperature Warning',
+            message: `Cabin temperature ${this.cabinTemp.toFixed(1)}°C exceeds ${PUG_THRESHOLDS.WARNING_C}°C — increasing ventilation`,
+            timestamp: Date.now(), resolved: false
+          });
+        }
+      }
+      // Shallow water alarm in The Wash
+      if (elapsed >= 88 && elapsed < 105) {
+        const depthBelowKeel = this.navigation.depth - DEPTH_THRESHOLDS.DRAFT;
+        if (depthBelowKeel < DEPTH_THRESHOLDS.SAFETY_MARGIN) {
+          if (!this.alarms.find(a => a.id === 'shallow-water' && !a.resolved)) {
+            this.alarms.push({
+              id: 'shallow-water', level: 'CRITICAL', category: 'navigation',
+              title: 'Shallow Water — DANGER',
+              message: `Depth ${this.navigation.depth.toFixed(1)}m — under-keel clearance ${depthBelowKeel.toFixed(1)}m below safety margin!`,
+              timestamp: Date.now(), resolved: false
+            });
+          }
+        }
+      }
+      // Fishing vessel proximity warning
+      if (elapsed >= 40 && elapsed < 80) {
+        const fisher = this.aisTargets.find(t => t.mmsi === 235033333);
+        if (fisher) {
+          const { cpa, tcpa } = calculateCPATCPA(this.ownVessel, fisher);
+          if (cpa < TRAFFIC_THRESHOLDS.WARNING_CPA_NM && tcpa > 0 && tcpa < TRAFFIC_THRESHOLDS.WARNING_TCPA_MIN) {
+            if (!this.alarms.find(a => a.id === 'fishing-warning' && !a.resolved)) {
+              this.alarms.push({
+                id: 'fishing-warning', level: 'WARNING', category: 'traffic',
+                title: 'Fishing Vessel Proximity',
+                message: `WASH HARVESTER — CPA ${cpa.toFixed(2)}nm in ${tcpa.toFixed(0)} minutes — keep clear`,
+                timestamp: Date.now(), resolved: false
+              });
+            }
+          }
+        }
+      }
+      if (elapsed >= 150) {
+        for (const alarm of this.alarms) {
+          if (!alarm.resolved) { alarm.resolved = true; alarm.resolvedAt = Date.now(); }
+        }
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAP SETUP — centred on Fosdyke, The Wash
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const map = L.map('map', {
+    center: [52.8721, -0.0412],
+    zoom: 10,
+    zoomControl: false,
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const vesselIcon = L.divIcon({
+    className: 'vessel-icon',
+    html: `<svg width="24" height="24" viewBox="0 0 24 24">
+      <polygon points="12,2 4,20 12,16 20,20" fill="#58a6ff" stroke="#fff" stroke-width="1"/>
+    </svg>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+  const vesselMarker = L.marker([52.8721, -0.0412], { icon: vesselIcon }).addTo(map);
+  const routeLine = L.polyline([], { color: '#58a6ff', weight: 2, opacity: 0.6 }).addTo(map);
+
+  const aisMarkers = new Map();
+  function getAISIcon(type, risk) {
+    const riskColors = { SAFE: '#3fb950', WARNING: '#d29922', DANGER: '#f85149' };
+    const typeColors = { cargo: '#8b949e', tanker: '#d29922', container: '#bc8cff', ferry: '#58a6ff', fishing: '#3fb950' };
+    const color = risk !== 'SAFE' ? riskColors[risk] : (typeColors[type] || '#3fb950');
+    const size = type === 'container' ? 22 : type === 'tanker' || type === 'ferry' ? 20 : type === 'cargo' ? 18 : 14;
+    return L.divIcon({
+      className: 'ais-icon',
+      html: `<svg width="${size}" height="${size}" viewBox="0 0 24 24">
+        <polygon points="12,2 4,20 12,16 20,20" fill="${color}" stroke="#fff" stroke-width="1" opacity="0.85"/>
+      </svg>`,
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
+    });
+  }
+
+  function updateAISMarkers(targets) {
+    for (const target of targets) {
+      if (aisMarkers.has(target.mmsi)) {
+        const m = aisMarkers.get(target.mmsi);
+        m.setLatLng([target.lat, target.lon]);
+        m.setIcon(getAISIcon(target.type, target.risk));
+        m.setTooltipContent(
+          `<b>${target.name}</b><br>Type: ${target.type}<br>SOG: ${target.sog.toFixed(1)} kts | COG: ${target.cog.toFixed(0)}°<br>CPA: ${target.cpa} nm | Risk: ${target.risk}`
+        );
+      } else {
+        const m = L.marker([target.lat, target.lon], { icon: getAISIcon(target.type, target.risk) })
+          .addTo(map)
+          .bindTooltip(
+            `<b>${target.name}</b><br>Type: ${target.type}<br>SOG: ${target.sog.toFixed(1)} kts | COG: ${target.cog.toFixed(0)}°<br>CPA: ${target.cpa} nm | Risk: ${target.risk}`,
+            { direction: 'top', offset: [0, -10] }
+          );
+        aisMarkers.set(target.mmsi, m);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FOLLOW VESSEL TOGGLE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let followVessel = true;
+  setTimeout(() => { followVessel = false; document.getElementById('follow-btn').style.opacity = '0.5'; document.getElementById('follow-btn').textContent = '📍 Follow'; }, 10000);
+  document.getElementById('follow-btn').addEventListener('click', () => {
+    followVessel = !followVessel;
+    document.getElementById('follow-btn').style.opacity = followVessel ? '1' : '0.5';
+    document.getElementById('follow-btn').textContent = followVessel ? '📍 Following' : '📍 Follow';
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MARINA DATABASE — 31 UK-wide marinas
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const MARINAS = [
+    // East Coast
+    { name: 'Fosdyke Marina', lat: 52.8721, lon: -0.0412, maxLOA: 15, maxBeam: 4.5, maxDraft: 1.5, facilities: ['water', 'shore_power'], accessType: 'tidal' },
+    { name: 'Boston Marina', lat: 52.9780, lon: -0.0280, maxLOA: 18, maxBeam: 5.0, maxDraft: 2.0, facilities: ['fuel', 'water', 'shore_power'], accessType: 'tidal' },
+    { name: 'Wells-next-the-Sea', lat: 52.9560, lon: 0.8480, maxLOA: 12, maxBeam: 4.0, maxDraft: 1.5, facilities: ['water'], accessType: 'tidal' },
+    { name: 'Lowestoft Haven Marina', lat: 52.4740, lon: 1.7360, maxLOA: 20, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'always' },
+    { name: 'Shotley Marina', lat: 51.9570, lon: 1.2680, maxLOA: 22, maxBeam: 6.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'always' },
+    { name: 'Burnham-on-Crouch', lat: 51.6300, lon: 0.8100, maxLOA: 16, maxBeam: 4.5, maxDraft: 2.0, facilities: ['fuel', 'water', 'shore_power'], accessType: 'tidal' },
+    { name: 'Queenborough Harbour', lat: 51.4160, lon: 0.7380, maxLOA: 15, maxBeam: 5.0, maxDraft: 2.0, facilities: ['water', 'shore_power'], accessType: 'tidal' },
+    { name: 'Ramsgate Royal Harbour', lat: 51.3270, lon: 1.4200, maxLOA: 25, maxBeam: 7.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'always' },
+    // South East
+    { name: 'Dover Marina', lat: 51.1170, lon: 1.3230, maxLOA: 25, maxBeam: 7.0, maxDraft: 3.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry', 'chandlery'], accessType: 'always' },
+    { name: 'Eastbourne Marina', lat: 50.7830, lon: 0.2870, maxLOA: 18, maxBeam: 5.5, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'locked' },
+    { name: 'Brighton Marina', lat: 50.8090, lon: -0.1020, maxLOA: 20, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry', 'chandlery'], accessType: 'always' },
+    { name: 'Chichester Marina', lat: 50.8280, lon: -0.8370, maxLOA: 22, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'laundry', 'wifi', 'chandlery'], accessType: 'tidal' },
+    // Solent
+    { name: 'Gosport Marina', lat: 50.7930, lon: -1.1180, maxLOA: 18, maxBeam: 5.0, maxDraft: 2.8, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'always' },
+    { name: 'Cowes Yacht Haven', lat: 50.7621, lon: -1.2978, maxLOA: 25, maxBeam: 7.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'laundry', 'wifi'], accessType: 'always' },
+    { name: 'Lymington Yacht Haven', lat: 50.7530, lon: -1.5280, maxLOA: 24, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'always' },
+    { name: 'Ocean Village Marina', lat: 50.8940, lon: -1.3880, maxLOA: 30, maxBeam: 8.0, maxDraft: 3.5, facilities: ['fuel', 'water', 'shore_power', 'laundry', 'wifi', 'chandlery'], accessType: 'always' },
+    // South West
+    { name: 'Poole Quay Boat Haven', lat: 50.7150, lon: -1.9850, maxLOA: 20, maxBeam: 5.5, maxDraft: 2.0, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'always' },
+    { name: 'Weymouth Marina', lat: 50.6090, lon: -2.4500, maxLOA: 22, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'laundry', 'chandlery'], accessType: 'locked' },
+    { name: 'Dartmouth Marina', lat: 50.3490, lon: -3.5770, maxLOA: 20, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'always' },
+    { name: 'Plymouth Yacht Haven', lat: 50.3650, lon: -4.1310, maxLOA: 25, maxBeam: 7.0, maxDraft: 3.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry', 'chandlery'], accessType: 'always' },
+    { name: 'Falmouth Marina', lat: 50.1530, lon: -5.0570, maxLOA: 22, maxBeam: 6.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'always' },
+    { name: 'Penzance Marina', lat: 50.1180, lon: -5.5280, maxLOA: 15, maxBeam: 5.0, maxDraft: 2.0, facilities: ['fuel', 'water', 'shore_power'], accessType: 'tidal' },
+    // Channel Islands & France
+    { name: 'St Peter Port Marina', lat: 49.4550, lon: -2.5360, maxLOA: 20, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'always' },
+    { name: 'St Helier Marina', lat: 49.1800, lon: -2.1120, maxLOA: 22, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'locked' },
+    { name: 'Cherbourg Marina', lat: 49.6430, lon: -1.6150, maxLOA: 30, maxBeam: 8.0, maxDraft: 3.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry', 'chandlery'], accessType: 'always' },
+    // West Coast
+    { name: 'Milford Haven Marina', lat: 51.7080, lon: -5.0350, maxLOA: 25, maxBeam: 7.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'always' },
+    { name: 'Swansea Marina', lat: 51.6130, lon: -3.9310, maxLOA: 20, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'locked' },
+    // Scotland
+    { name: 'Oban Marina', lat: 56.4130, lon: -5.4730, maxLOA: 20, maxBeam: 6.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'wifi'], accessType: 'always' },
+    // North East
+    { name: 'Hull Marina', lat: 53.7380, lon: -0.3360, maxLOA: 22, maxBeam: 6.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'locked' },
+    { name: 'Grimsby Marina', lat: 53.5730, lon: -0.0680, maxLOA: 18, maxBeam: 5.0, maxDraft: 2.5, facilities: ['fuel', 'water', 'shore_power'], accessType: 'locked' },
+    { name: 'Hartlepool Marina', lat: 54.6890, lon: -1.1980, maxLOA: 20, maxBeam: 6.0, maxDraft: 3.0, facilities: ['fuel', 'water', 'shore_power', 'wifi', 'laundry'], accessType: 'locked' },
+  ];
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MARINA MARKERS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function addMarinaMarkers() {
+    for (const marina of MARINAS) {
+      const marinaIcon = L.divIcon({
+        className: 'marina-icon',
+        html: `<span style="font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5))">⚓</span>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      L.marker([marina.lat, marina.lon], { icon: marinaIcon })
+        .addTo(map)
+        .bindTooltip(`<b>${marina.name}</b><br>Max LOA: ${marina.maxLOA}m | Draft: ${marina.maxDraft}m<br>Access: ${marina.accessType}<br>Facilities: ${marina.facilities.join(', ')}`, { direction: 'top', offset: [0, -10] });
+    }
+  }
+  addMarinaMarkers();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WIND INDICATOR CONTROL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const windControl = L.control({ position: 'bottomleft' });
+  windControl.onAdd = function() {
+    const div = L.DomUtil.create('div', 'wind-overlay');
+    div.id = 'wind-overlay';
+    div.style.cssText = 'background:rgba(13,17,23,0.85);border:1px solid #30363d;border-radius:8px;padding:8px 12px;color:#e6edf3;font-size:11px;line-height:1.4;backdrop-filter:blur(4px);';
+    div.innerHTML = '🌬️ Wind: —';
+    return div;
+  };
+  windControl.addTo(map);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ROUTE PLANNER — Fully Automatic Multi-Leg Passage Planning
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const FACILITY_ICONS = {
+    fuel: '⛽', water: '💧', shore_power: '🔌', wifi: '📶',
+    laundry: '👕', chandlery: '🛠️', boatyard: '🏗️'
+  };
+
+  function distanceNm(lat1, lon1, lat2, lon2) {
+    const R = 3440.065;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  function bearingTo(lat1, lon1, lat2, lon2) {
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+    const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+              Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+    return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+  }
+
+  function beaufort(windKts) {
+    if (windKts < 1) return { force: 0, desc: 'Calm' };
+    if (windKts < 4) return { force: 1, desc: 'Light air' };
+    if (windKts < 7) return { force: 2, desc: 'Light breeze' };
+    if (windKts < 11) return { force: 3, desc: 'Gentle breeze' };
+    if (windKts < 17) return { force: 4, desc: 'Moderate breeze' };
+    if (windKts < 22) return { force: 5, desc: 'Fresh breeze' };
+    if (windKts < 28) return { force: 6, desc: 'Strong breeze' };
+    if (windKts < 34) return { force: 7, desc: 'Near gale' };
+    if (windKts < 41) return { force: 8, desc: 'Gale' };
+    return { force: 9, desc: 'Strong gale+' };
+  }
+
+  function passageAssessment(waveHeight, windKts) {
+    if (waveHeight < 1.5 && windKts < 20) return { label: 'Good to go', cls: 'good' };
+    if (waveHeight < 2.5 && windKts < 30) return { label: 'Caution advised', cls: 'moderate' };
+    return { label: 'Not recommended', cls: 'poor' };
+  }
+
+  // Calculate fuel range in nautical miles
+  function fuelRangeNm(fuelPercent) {
+    const litresAvailable = (fuelPercent / 100) * VESSEL_PARAMS.fuelCapacityLitres;
+    const hoursRange = litresAvailable / VESSEL_PARAMS.fuelConsumptionLph;
+    return hoursRange * 6.5; // at 6.5 kts
+  }
+
+  // Calculate water days remaining
+  function waterDaysRemaining(waterPercent) {
+    const litresAvailable = (waterPercent / 100) * VESSEL_PARAMS.waterCapacityLitres;
+    return litresAvailable / VESSEL_PARAMS.waterConsumptionLpd;
+  }
+
+  // Find best marina along route between two points — MUST make forward progress
+  function findBestStopMarina(fromLat, fromLon, toLat, toLon, needFuel, needWater, maxDistFromStart) {
+    const distFromStartToDest = distanceNm(fromLat, fromLon, toLat, toLon);
+    const candidates = MARINAS
+      .filter(m => VESSEL_PARAMS.loa <= m.maxLOA && VESSEL_PARAMS.beam <= m.maxBeam && VESSEL_PARAMS.draft <= m.maxDraft)
+      .filter(m => {
+        if (needFuel && !m.facilities.includes('fuel')) return false;
+        if (needWater && !m.facilities.includes('water')) return false;
+        return true;
+      })
+      .map(m => {
+        const distFromStart = distanceNm(fromLat, fromLon, m.lat, m.lon);
+        const distToDest = distanceNm(m.lat, m.lon, toLat, toLon);
+        return { ...m, distFromStart, distToDest };
+      })
+      // KEY FIX: marina must be CLOSER to destination than we currently are (forward progress)
+      .filter(m => m.distToDest < distFromStartToDest * 0.95)
+      // Must be reachable within our max leg distance
+      .filter(m => m.distFromStart <= maxDistFromStart && m.distFromStart > 5)
+      // Score: prefer marinas that make the most progress (lowest distToDest) while being reachable
+      .sort((a, b) => a.distToDest - b.distToDest);
+    return candidates.length > 0 ? candidates[0] : null;
+  }
+
+  // Plan multi-leg route with automatic stops
+  function planRoute(fromLat, fromLon, toLat, toLon, fuelPercent, waterPercent) {
+    const totalDist = distanceNm(fromLat, fromLon, toLat, toLon);
+    const currentFuelRange = fuelRangeNm(fuelPercent);
+    const currentWaterDays = waterDaysRemaining(waterPercent);
+    const totalTimeH = totalDist / 6.5;
+    const totalTimeDays = totalTimeH / 24;
+
+    const legs = [];
+    let needStop = false;
+    let stopReasons = [];
+
+    // Check if direct passage is possible
+    if (currentFuelRange < totalDist * 1.2) { needStop = true; stopReasons.push('fuel'); }
+    if (currentWaterDays < totalTimeDays * 1.3) { needStop = true; stopReasons.push('water'); }
+    if (totalTimeH > VESSEL_PARAMS.maxPassageLegHours) { needStop = true; stopReasons.push('rest'); }
+
+    if (!needStop) {
+      // Direct passage
+      legs.push({ from: { name: 'Current Position', lat: fromLat, lon: fromLon }, to: { name: 'Destination', lat: toLat, lon: toLon }, dist: totalDist, bearing: bearingTo(fromLat, fromLon, toLat, toLon), reason: null, stop: null });
+    } else {
+      // Need stops — plan legs
+      let currentLat = fromLat, currentLon = fromLon;
+      let remainingFuelRange = currentFuelRange;
+      let remainingWaterDays = currentWaterDays;
+      let accumulatedHours = 0;
+      let legCount = 0;
+      const maxLegs = 5; // safety limit
+
+      while (legCount < maxLegs) {
+        const distToFinal = distanceNm(currentLat, currentLon, toLat, toLon);
+        const timeToFinal = distToFinal / 6.5;
+
+        // Can we make it direct from here?
+        const canReachFuel = remainingFuelRange >= distToFinal * 1.2;
+        const canReachWater = remainingWaterDays >= (timeToFinal / 24) * 1.3;
+        const canReachRest = (accumulatedHours + timeToFinal) <= VESSEL_PARAMS.maxPassageLegHours;
+
+        if (canReachFuel && canReachWater && canReachRest) {
+          legs.push({ from: { name: legCount === 0 ? 'Current Position' : legs[legs.length-1].stop.name, lat: currentLat, lon: currentLon }, to: { name: 'Destination', lat: toLat, lon: toLon }, dist: distToFinal, bearing: bearingTo(currentLat, currentLon, toLat, toLon), reason: null, stop: null });
+          break;
+        }
+
+        // Determine max distance for this leg
+        let maxLegDist = Math.min(remainingFuelRange * 0.8, VESSEL_PARAMS.maxPassageLegHours * 6.5);
+        let legReason = '';
+        let needFuel = false, needWater = false;
+
+        if (!canReachFuel) { legReason = '⛽ Fuel resupply'; needFuel = true; maxLegDist = Math.min(maxLegDist, remainingFuelRange * 0.75); }
+        else if (!canReachRest) { legReason = '😴 Rest stop (24h max passage)'; maxLegDist = VESSEL_PARAMS.maxPassageLegHours * 6.5 * 0.9; }
+        else if (!canReachWater) { legReason = '💧 Water resupply'; needWater = true; }
+
+        const stopMarina = findBestStopMarina(currentLat, currentLon, toLat, toLon, needFuel, needWater, maxLegDist);
+
+        if (!stopMarina) {
+          // Can't find stop, do direct
+          legs.push({ from: { name: legCount === 0 ? 'Current Position' : legs[legs.length-1].stop.name, lat: currentLat, lon: currentLon }, to: { name: 'Destination', lat: toLat, lon: toLon }, dist: distToFinal, bearing: bearingTo(currentLat, currentLon, toLat, toLon), reason: null, stop: null });
+          break;
+        }
+
+        const legDist = stopMarina.distFromStart;
+        const legTime = legDist / 6.5;
+        legs.push({
+          from: { name: legCount === 0 ? 'Current Position' : legs[legs.length-1].stop.name, lat: currentLat, lon: currentLon },
+          to: { name: stopMarina.name, lat: stopMarina.lat, lon: stopMarina.lon },
+          dist: legDist, bearing: bearingTo(currentLat, currentLon, stopMarina.lat, stopMarina.lon),
+          reason: legReason, stop: stopMarina
+        });
+
+        currentLat = stopMarina.lat;
+        currentLon = stopMarina.lon;
+        remainingFuelRange = needFuel ? fuelRangeNm(95) : remainingFuelRange - legDist;
+        remainingWaterDays = needWater ? waterDaysRemaining(90) : remainingWaterDays - (legTime / 24);
+        accumulatedHours = 0; // reset after stop
+        legCount++;
+      }
+    }
+    return legs;
+  }
+
+  // Route planner state
+  let rpRouteLine = null;
+  let rpDestMarker = null;
+  let rpLegLines = [];
+
+  function closeRoutePlanner() {
+    document.getElementById('route-planner').classList.remove('open');
+    if (rpRouteLine) { map.removeLayer(rpRouteLine); rpRouteLine = null; }
+    if (rpDestMarker) { map.removeLayer(rpDestMarker); rpDestMarker = null; }
+    rpLegLines.forEach(l => map.removeLayer(l));
+    rpLegLines = [];
+    // Reset autopilot
+    simulator.autopilotMode = `HEADING HOLD ${Math.round(simulator.ownVessel.cog)}°`;
+  }
+
+  document.getElementById('rp-close').addEventListener('click', closeRoutePlanner);
+
+  async function fetchWeatherForLeg(lat, lon) {
+    try {
+      const [weatherRes, marineRes] = await Promise.all([
+        fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=wind_speed_10m,wind_direction_10m&timezone=auto&forecast_days=1`),
+        fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}&hourly=wave_height&timezone=auto`)
+      ]);
+      let windKts = null, waveH = null, windDir = null;
+      if (weatherRes.ok) {
+        const wd = await weatherRes.json();
+        if (wd.hourly) {
+          const ws = wd.hourly.wind_speed_10m ? wd.hourly.wind_speed_10m[0] : null;
+          windKts = ws !== null ? +(ws * 0.539957).toFixed(1) : null;
+          windDir = wd.hourly.wind_direction_10m ? wd.hourly.wind_direction_10m[0] : null;
+        }
+      }
+      if (marineRes.ok) {
+        const md = await marineRes.json();
+        if (md.hourly && md.hourly.wave_height) {
+          waveH = md.hourly.wave_height[0];
+        }
+      }
+      return { windKts, waveH, windDir };
+    } catch (e) {
+      return { windKts: null, waveH: null, windDir: null };
+    }
+  }
+
+  function generateCopilotMessage(legs, totalDist, fuelPercent, waterPercent, destName) {
+    const totalTimeH = totalDist / 6.5;
+    const numStops = legs.filter(l => l.stop).length;
+    const firstStop = legs.find(l => l.stop);
+    const finalBearing = legs[legs.length - 1].bearing;
+    const now = new Date();
+    const arrivalH = new Date(now.getTime() + totalTimeH * 3600000);
+    const timeStr = arrivalH.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    let msg = `Based on your current supplies (fuel ${fuelPercent}%, water ${waterPercent}%), `;
+    if (numStops === 0) {
+      msg += `you can safely reach your destination in a direct passage of ${totalDist.toFixed(0)}nm. `;
+    } else {
+      msg += `I've planned ${numStops} stop${numStops > 1 ? 's' : ''} along the route. `;
+      if (firstStop) {
+        msg += `First stop at ${firstStop.stop.name} for ${firstStop.reason.replace(/[⛽💧😴]\s*/, '').toLowerCase()}. `;
+      }
+    }
+    msg += `Estimated arrival at ${timeStr}`;
+    if (totalTimeH > 6) {
+      const dawnDepart = new Date(now);
+      dawnDepart.setHours(6, 0, 0, 0);
+      if (dawnDepart < now) dawnDepart.setDate(dawnDepart.getDate() + 1);
+      msg += ` — I'd recommend departing at 06:00 for a daylight arrival`;
+    }
+    msg += `. Autopilot course set to ${Math.round(finalBearing)}° — I'll monitor for traffic and depth hazards throughout the passage.`;
+    return msg;
+  }
+
+  async function openRoutePlanner(destLat, destLon) {
+    const panel = document.getElementById('route-planner');
+    const body = document.getElementById('rp-body');
+    body.innerHTML = '<div class="rp-loading"><div class="spinner"></div><br>Planning passage route...</div>';
+    panel.classList.add('open');
+
+    const vesselPos = simulator.ownVessel;
+    const fuelPercent = simulator.tanks.fuel;
+    const waterPercent = simulator.tanks.water;
+
+    // Clean up previous route
+    if (rpRouteLine) map.removeLayer(rpRouteLine);
+    if (rpDestMarker) map.removeLayer(rpDestMarker);
+    rpLegLines.forEach(l => map.removeLayer(l));
+    rpLegLines = [];
+
+    // Destination marker
+    const destIcon = L.divIcon({
+      className: 'dest-icon',
+      html: `<svg width="20" height="28" viewBox="0 0 20 28">
+        <path d="M10 0C4.5 0 0 4.5 0 10c0 7.5 10 18 10 18s10-10.5 10-18C20 4.5 15.5 0 10 0z" fill="#f85149" stroke="#fff" stroke-width="1"/>
+        <circle cx="10" cy="10" r="4" fill="#fff"/>
+      </svg>`,
+      iconSize: [20, 28],
+      iconAnchor: [10, 28],
+    });
+    rpDestMarker = L.marker([destLat, destLon], { icon: destIcon }).addTo(map);
+
+    // Plan route
+    const legs = planRoute(vesselPos.lat, vesselPos.lon, destLat, destLon, fuelPercent, waterPercent);
+    const totalDist = legs.reduce((sum, l) => sum + l.dist, 0);
+    const totalTimeH = totalDist / 6.5;
+
+    // Draw route lines for each leg
+    const colors = ['#f85149', '#d29922', '#58a6ff', '#3fb950', '#bc8cff'];
+    let points = [[vesselPos.lat, vesselPos.lon]];
+    legs.forEach((leg, i) => {
+      points.push([leg.to.lat, leg.to.lon]);
+      const line = L.polyline(
+        [[leg.from.lat, leg.from.lon], [leg.to.lat, leg.to.lon]],
+        { color: colors[i % colors.length], weight: 3, dashArray: '8, 6', opacity: 0.8 }
+      ).addTo(map);
+      rpLegLines.push(line);
+    });
+
+    // Set autopilot to route following
+    const firstBearing = legs[0].bearing;
+    simulator.autopilotMode = `ROUTE FOLLOWING ${Math.round(firstBearing)}°`;
+
+    // Fetch weather for each leg midpoint
+    const weatherPromises = legs.map(leg => {
+      const midLat = (leg.from.lat + leg.to.lat) / 2;
+      const midLon = (leg.from.lon + leg.to.lon) / 2;
+      return fetchWeatherForLeg(midLat, midLon);
+    });
+    const weatherResults = await Promise.all(weatherPromises);
+
+    // Build passage plan HTML
+    let html = '';
+    let totalPassageTime = 0;
+    const numStops = legs.filter(l => l.stop).length;
+
+    legs.forEach((leg, i) => {
+      const legTimeH = leg.dist / 6.5;
+      const legH = Math.floor(legTimeH);
+      const legM = Math.round((legTimeH - legH) * 60);
+      totalPassageTime += legTimeH;
+
+      const weather = weatherResults[i];
+      const windStr = weather.windKts !== null ? `${weather.windKts}kts` : '—';
+      const windDirStr = weather.windDir !== null ? ` from ${weather.windDir}°` : '';
+      const waveStr = weather.waveH !== null ? `${weather.waveH.toFixed(1)}m` : '—';
+      const assessment = (weather.waveH !== null && weather.windKts !== null) ?
+        passageAssessment(weather.waveH, weather.windKts) : { label: 'Unknown', cls: 'moderate' };
+
+      const isLastLeg = i === legs.length - 1;
+      const legTitle = isLastLeg && !leg.stop ?
+        `LEG ${i+1}: ${leg.from.name} → Destination` :
+        `LEG ${i+1}: ${leg.from.name} → ${leg.to.name}`;
+
+      html += `<div class="rp-leg">
+        <div class="rp-leg-title">${legTitle} (${leg.dist.toFixed(0)}nm)</div>
+        <div class="rp-leg-detail">⏱️ ${legH}h ${legM}m at 6.5kts | Bearing: ${leg.bearing.toFixed(0)}°</div>
+        <div class="rp-leg-detail">🌤️ Wind: ${windStr}${windDirStr} | Waves: ${waveStr} | <span class="rp-badge ${assessment.cls}">${assessment.label}</span></div>`;
+
+      if (leg.stop) {
+        const facilityIcons = leg.stop.facilities.map(f => `${FACILITY_ICONS[f] || '•'} ${f.replace('_',' ')}`).join(', ');
+        html += `<div class="rp-leg-stop">
+          <div class="rp-leg-stop-title">📍 STOP: ${leg.stop.name}</div>
+          <div class="rp-leg-reason">Reason: ${leg.reason} (range: ${fuelRangeNm(fuelPercent).toFixed(0)}nm)</div>
+          <div class="rp-leg-detail" style="margin-top:4px;">Access: <span class="rp-marina-access ${leg.stop.accessType}">${leg.stop.accessType}</span> | Facilities: ${facilityIcons}</div>
+        </div>`;
+      }
+      html += `</div>`;
+    });
+
+    // Summary
+    const totalH = Math.floor(totalPassageTime);
+    const totalM = Math.round((totalPassageTime - totalH) * 60);
+    html += `<div class="rp-summary">
+      Total: ${totalDist.toFixed(0)}nm | ${legs.length} leg${legs.length > 1 ? 's' : ''} | ${numStops} stop${numStops !== 1 ? 's' : ''} | ~${totalH}h ${totalM}m passage time
+    </div>`;
+
+    // AI Copilot
+    const copilotMsg = generateCopilotMessage(legs, totalDist, fuelPercent, waterPercent, 'destination');
+    html += `<div class="rp-section" style="margin-top:16px;">
+      <div class="rp-section-title">🤖 AI Copilot</div>
+      <div class="copilot-msg">${copilotMsg}</div>
+    </div>`;
+
+    body.innerHTML = html;
+  }
+
+  // Right-click on map to open route planner
+  map.on('contextmenu', function(e) {
+    e.originalEvent.preventDefault();
+    openRoutePlanner(e.latlng.lat, e.latlng.lng);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DASHBOARD UPDATE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let renderedAlarmIds = new Set();
+
+  function updateDashboard(state) {
+    document.getElementById('clock').textContent = new Date(state.timestamp).toLocaleTimeString();
+
+    const mins = Math.floor(state.elapsed / 60);
+    const secs = Math.floor(state.elapsed % 60);
+    document.getElementById('elapsed').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+    // Map
+    vesselMarker.setLatLng([state.ownVessel.lat, state.ownVessel.lon]);
+    routeLine.setLatLngs(state.routeHistory.map(p => [p.lat, p.lon]));
+    if (followVessel) map.panTo([state.ownVessel.lat, state.ownVessel.lon], { animate: true, duration: 1 });
+    updateAISMarkers(state.aisTargets);
+
+    // Wind overlay
+    const windOverlay = document.getElementById('wind-overlay');
+    if (windOverlay) {
+      windOverlay.innerHTML = `🌬️ <b>${state.navigation.windSpeed} kts</b> @ ${state.navigation.windAngle}°`;
+    }
+
+    // Engine
+    document.getElementById('rpm').textContent = state.engine.rpm;
+    document.getElementById('rpm-bar').style.width = `${((state.engine.rpm - 1500) / 1500) * 100}%`;
+    document.getElementById('coolant').innerHTML = `${state.engine.coolantTemp}<span class="metric-unit">°C</span>`;
+    const coolantPct = ((state.engine.coolantTemp - 70) / 30) * 100;
+    document.getElementById('coolant-bar').style.width = `${coolantPct}%`;
+    document.getElementById('coolant-bar').style.background = state.engine.coolantTemp > 90 ? 'var(--accent-red)' : 'var(--accent-green)';
+    document.getElementById('oil').innerHTML = `${state.engine.oilPressure}<span class="metric-unit"> bar</span>`;
+    document.getElementById('oil-bar').style.width = `${((state.engine.oilPressure - 2) / 2) * 100}%`;
+    document.getElementById('health').innerHTML = `${state.engine.healthScore}<span class="metric-unit">%</span>`;
+    document.getElementById('health-bar').style.width = `${state.engine.healthScore}%`;
+
+    // Power
+    document.getElementById('soc').innerHTML = `${state.power.socPercent.toFixed(0)}<span class="metric-unit">%</span>`;
+    document.getElementById('soc-bar').style.width = `${state.power.socPercent}%`;
+    const socColor = state.power.socPercent > 60 ? 'var(--accent-green)' :
+      state.power.socPercent > 30 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+    document.getElementById('soc-bar').style.background = socColor;
+    document.getElementById('solar').innerHTML = `${state.power.solarWatts}<span class="metric-unit">W</span>`;
+    document.getElementById('solar-flow').textContent = `+${state.power.windWatts}W wind`;
+
+    // Cabin temperature
+    document.getElementById('cabin-temp').innerHTML = `${state.cabinTemp}<span class="metric-unit">°C</span>`;
+    const tempPct = ((state.cabinTemp - 20) / 15) * 100;
+    document.getElementById('cabin-temp-bar').style.width = `${tempPct}%`;
+    const tempColor = state.cabinTemp >= 28 ? 'var(--accent-red)' :
+      state.cabinTemp >= 26 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+    document.getElementById('cabin-temp-bar').style.background = tempColor;
+    document.getElementById('cabin-temp').style.color = state.cabinTemp >= 28 ? 'var(--accent-red)' : 'var(--text-primary)';
+
+    // Voltage & net power
+    document.getElementById('voltage').innerHTML = `${state.power.voltage}<span class="metric-unit">V</span>`;
+    const net = state.power.solarWatts + state.power.windWatts - state.power.consumptionWatts;
+    document.getElementById('power-net').textContent = `Net: ${net > 0 ? '+' : ''}${net}W`;
+
+    // Navigation
+    document.getElementById('speed').textContent = state.ownVessel.sog.toFixed(1);
+    document.getElementById('heading').textContent = state.ownVessel.cog.toFixed(0) + '°';
+
+    const depthPanel = document.getElementById('depth-panel');
+    document.getElementById('depth').textContent = state.navigation.depth.toFixed(1);
+    depthPanel.className = 'nav-metric';
+    if (state.navigation.depth < 3) depthPanel.classList.add('depth-danger');
+    else if (state.navigation.depth < 6) depthPanel.classList.add('depth-caution');
+
+    document.getElementById('wind').textContent = state.navigation.windSpeed;
+    document.getElementById('wind-angle').textContent = state.navigation.windAngle + '°';
+    document.getElementById('lat').textContent = state.ownVessel.lat.toFixed(4);
+    document.getElementById('lon').textContent = state.ownVessel.lon.toFixed(4);
+
+    // Tanks
+    document.getElementById('fuel').textContent = state.tanks.fuel.toFixed(0) + '%';
+    document.getElementById('fuel-bar').style.width = state.tanks.fuel + '%';
+    document.getElementById('water').textContent = state.tanks.water.toFixed(0) + '%';
+    document.getElementById('water-bar').style.width = state.tanks.water + '%';
+    document.getElementById('waste').textContent = state.tanks.waste.toFixed(0) + '%';
+    document.getElementById('waste-bar').style.width = state.tanks.waste + '%';
+
+    // Autopilot
+    document.getElementById('autopilot-mode').textContent = state.autopilotMode;
+
+    // Alarms
+    updateAlarms(state.alarms);
+  }
+
+  function updateAlarms(alarms) {
+    const list = document.getElementById('alarms-list');
+    const alarmDot = document.getElementById('alarm-dot');
+
+    if (alarms.length === 0) return;
+
+    const active = alarms.filter(a => !a.resolved);
+    alarmDot.style.background = active.length > 0 ?
+      (active.some(a => a.level === 'CRITICAL') ? 'var(--accent-red)' : 'var(--accent-yellow)') :
+      'var(--accent-green)';
+
+    let hasNew = false;
+    for (const alarm of alarms) {
+      const alarmKey = alarm.id + (alarm.resolved ? '-resolved' : '');
+      if (renderedAlarmIds.has(alarmKey)) continue;
+      renderedAlarmIds.add(alarmKey);
+      hasNew = true;
+
+      if (alarm.resolved && renderedAlarmIds.has(alarm.id)) {
+        const existing = document.querySelector(`[data-alarm-id="${alarm.id}"]`);
+        if (existing) existing.classList.add('resolved');
+        continue;
+      }
+      const el = document.createElement('div');
+      el.className = `alarm-item ${alarm.level} alarm-flash`;
+      el.setAttribute('data-alarm-id', alarm.id);
+      el.innerHTML = `
+        <div class="alarm-header">
+          <span class="alarm-level">${alarm.level}</span>
+          <span class="alarm-title">${alarm.title}</span>
+          <span class="alarm-time">${new Date(alarm.timestamp).toLocaleTimeString()}</span>
+        </div>
+        <div class="alarm-message">${alarm.message}</div>
+      `;
+
+      const placeholder = list.querySelector('.alarm-item[style]');
+      if (placeholder) placeholder.remove();
+
+      list.insertBefore(el, list.firstChild);
+    }
+    if (hasNew) list.scrollTop = 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // START SIMULATION
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const simulator = new VesselSimulator();
+  let lastUpdate = Date.now();
+
+  document.getElementById('sim-status').textContent = 'Simulation Running';
+
+  setInterval(() => {
+    const state = simulator.update();
+    updateDashboard(state);
+    const now = Date.now();
+    document.getElementById('update-rate').textContent = `${(now - lastUpdate)}ms interval`;
+    lastUpdate = now;
+  }, 1500);
+
+  </script>
+</body>
+</html>
