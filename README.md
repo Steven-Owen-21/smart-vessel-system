@@ -1,6 +1,6 @@
 # ⛵ Smart Vessel Monitoring & Automation System
 
-> A comprehensive IoT vessel monitoring platform combining edge computing (Raspberry Pi 5 / AWS IoT Greengrass) with serverless cloud (AWS) to deliver real-time navigation safety, predictive maintenance, and remote situational awareness — designed for offshore sailing.
+> Principal Architect | Industrial IoT & Edge AI PlatformArchitected an enterprise-grade, offline-first Edge IoT platform for maritime fleets, featuring real-time data fusion, predictive analytics, and zero-trust security.Edge Compute: Deployed an offline-first architecture using AWS IoT Greengrass v2 and ARM64 Lambda for disconnected environments.Data Fusion: Engineered a high-throughput pipeline correlating streaming data (AIS, radar, vision, GPS) for real-time hazard mitigation.Predictive ML: Implemented FFT vibration analysis and ML baseline detection to automate component degradation trending.Formal Testing: Validated system correctness with property-based testing (fast-check) across complex event-driven models.Zero-Trust Security: Enforced strict data governance via X.509 mTLS, TLS 1.3, and automated alert sanitisation.Cost Engineering: Hyper-optimized the serverless stack using MQTT batching, capping operational costs under £2/month.
 
 [![Tests](https://img.shields.io/badge/tests-1%2C633%20passing-brightgreen)]()
 [![Coverage](https://img.shields.io/badge/property%20tests-24%20invariants-blue)]()
