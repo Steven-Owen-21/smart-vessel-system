@@ -1,6 +1,6 @@
 # ⛵ Smart Vessel Monitoring & Automation System
 
-> Principal Architect | Industrial IoT & Edge AI PlatformArchitected an enterprise-grade, offline-first Edge IoT platform for maritime fleets, featuring real-time data fusion, predictive analytics, and zero-trust security.Edge Compute: Deployed an offline-first architecture using AWS IoT Greengrass v2 and ARM64 Lambda for disconnected environments.Data Fusion: Engineered a high-throughput pipeline correlating streaming data (AIS, radar, vision, GPS) for real-time hazard mitigation.Predictive ML: Implemented FFT vibration analysis and ML baseline detection to automate component degradation trending.Formal Testing: Validated system correctness with property-based testing (fast-check) across complex event-driven models.Zero-Trust Security: Enforced strict data governance via X.509 mTLS, TLS 1.3, and automated alert sanitisation.Cost Engineering: Hyper-optimized the serverless stack using MQTT batching, capping operational costs under £2/month.
+> A comprehensive IoT vessel monitoring platform combining edge computing (Raspberry Pi 5 / AWS IoT Greengrass) with serverless cloud (AWS) to deliver real-time navigation safety, predictive maintenance, and remote situational awareness — designed for offshore sailing.
 
 [![Tests](https://img.shields.io/badge/tests-1%2C633%20passing-brightgreen)]()
 [![Coverage](https://img.shields.io/badge/property%20tests-24%20invariants-blue)]()
@@ -35,39 +35,6 @@
 ## 🔄 Request Flow
 
 ![Request Flow](docs/architecture/request-flow.png)
-
----
-
-## 🔄 Data Flow: Sensor to Cloud
-
-```mermaid
-sequenceDiagram
-    participant S as Sensors
-    participant SK as Signal K
-    participant GG as Greengrass Lambda
-    participant Q as Offline Queue
-    participant IOT as AWS IoT Core
-    participant EB as EventBridge
-    participant L as Lambda
-    participant DB as DynamoDB
-    participant SNS as SNS
-
-    S->>SK: Raw telemetry (NMEA/I2C/USB)
-    SK->>GG: Normalised Signal K paths
-    GG->>GG: Process locally (offline-safe)
-    
-    alt Online (Starlink connected)
-        GG->>IOT: MQTT TLS 1.3 (batched)
-        IOT->>EB: Route by event type
-        EB->>L: Invoke alert Lambda
-        L->>DB: Store (TTL auto-delete)
-        L->>SNS: Alert if threshold breached
-    else Offline at Sea
-        GG->>Q: Queue with ordering preserved
-        Note over Q: Store-and-forward<br/>Priority: safety > routine
-        Q-->>IOT: Sync when connected
-    end
-```
 
 ---
 
