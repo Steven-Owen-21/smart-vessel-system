@@ -32,6 +32,10 @@
 
 ![Architecture](docs/architecture/architecture.png)
 
+## 🔄 Request Flow
+
+![Request Flow](docs/architecture/request-flow.png)
+
 ---
 
 ## 🔄 Data Flow: Sensor to Cloud
